@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "uscounties"
+dynamic = ["version"]
+copyright = "Copyright 2024, The Alliance for Sustainable Energy, LLC"
+description = "Python utilities for comparing lists of U.S. counties"
+url = "https://github.com/dsgrid/us-counties"
+requires-python = ">=3.8"
+license = {file = "LICENSE"}
+readme = "README.md"
+keywords = ["united states","census","county"]
+authors = [
+    {name = "Elaine Hale", email = "elaine.hale@nrel.gov"},
+]
+maintainers = [
+    {name = "Elaine Hale", email = "elaine.hale@nrel.gov"}
+]
+include_package_data = true
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: BSD License",
+    "Natural Language :: English",
+    "Programming Language :: Python :: 3.10",
+]
+dependencies = [
+    "fastparquet",
+    "geopandas",
+    "openpyxl",
+    "pandas",
+    "pykml",
+    "requests"
+]
+
+[tool.hatch.version]
+path = "uscounties/__init__.py"
+
+[tool.hatch.metadata]
+allow-direct-references = true
