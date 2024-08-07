@@ -69,6 +69,8 @@ class CountyList:
         "state_name")
     
     STATE_LOOKUP = pd.read_parquet(basepath / "state_lookup.parquet")
+
+    CB_VINTAGES = [int(filename.stem.split('_')[1]) for filename in basepath.glob("cb_*_us_county.parquet")]
     
     def __init__(self, df, columns: CountyListColumns, description=""):
         self.check_column_names_standard(columns)
@@ -185,6 +187,11 @@ class CountyList:
                 current = other
                 current_count = count
         return current
+    
+    @classmethod
+    def load_cb_vintage(cls, year):
+        assert year in cls.CB_VINTAGES, f"No U.S. Census Bureau list of counties available for {year}"
+        return cls.load(basepath / f"cb_{year}_us_county.parquet")
     
     @classmethod
     def load_csv(cls, filename, description="", 
