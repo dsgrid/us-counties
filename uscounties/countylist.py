@@ -236,7 +236,7 @@ class CountyList:
                 columns = CountyListColumns(None, "ST", "CO", "NAME", None, None)
             elif census_year in [2000, 2010]:
                 columns = CountyListColumns(None, "STATE", "COUNTY", "NAME", None, None)
-            elif census_year <= 2015:
+            elif census_year <= 2019:
                 columns = CountyListColumns("GEOID", "STATEFP", "COUNTYFP", "NAME", None, None)
             else:
                 columns = CountyListColumns("GEOID", "STATEFP", "COUNTYFP", "NAME", "STUSPS", "STATE_NAME")

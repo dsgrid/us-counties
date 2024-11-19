@@ -121,12 +121,12 @@ def update_census_list(yr: int, save_dir: Path=basepath, download_dirname: Optio
     return call_func(yr, save_dir, download_dirname)
 
 
-def _update_census_list_shp(yr, save_dir, download_dirname):
+def _update_census_list_shp(yr: int, save_dir: Path, download_dirname: Path):
     _download_shp_file(yr, download_dirname)
     return _save_census_list_from_shp(yr, save_dir, download_dirname)
 
 
-def _download_shp_file(yr, dirname):
+def _download_shp_file(yr: int, dirname: Path):
     url = None; orig_name = None; new_name = None
     if yr in OLD_SHP_FILES:
         url, orig_name, new_name = OLD_SHP_FILES[yr]
@@ -145,7 +145,7 @@ def _download_shp_file(yr, dirname):
         raise
 
 
-def _save_census_list_from_shp(yr, save_dir, download_dirname):
+def _save_census_list_from_shp(yr: int, save_dir: Path, download_dirname: Path):
     for filepath in Path(download_dirname).glob(f"*.shp"):
         if int(filepath.stem.split("_")[1]) != yr:
             continue
@@ -157,12 +157,12 @@ def _save_census_list_from_shp(yr, save_dir, download_dirname):
     raise Exception(msg)
 
 
-def _update_census_list_kml(yr, save_dir, download_dirname):
+def _update_census_list_kml(yr: int, save_dir: Path, download_dirname: Path):
     _download_kml_file(yr, download_dirname)
     return _save_census_list_from_kml(yr, save_dir, download_dirname)
 
 
-def _download_kml_file(yr, dirname):
+def _download_kml_file(yr: int, dirname: Path):
     try:
         if yr < 2019:
             r = requests.get(f"https://www2.census.gov/geo/tiger/GENZ{yr}/cb_{yr}_us_county_20m.kmz", stream=True)
@@ -180,7 +180,7 @@ def _download_kml_file(yr, dirname):
         raise
 
 
-def _save_census_list_from_kml(download_dirname, yr, save_dir=basepath):
+def _save_census_list_from_kml(download_dirname: Path, yr: int, save_dir: Path=basepath):
     for filepath in Path(download_dirname).glob(f"*.kml"):
         if int(filepath.stem.split("_")[1]) != yr:
             continue
@@ -232,7 +232,8 @@ def update_census_lists(save_dir: Path=basepath, download_dirname: Optional[Path
     return _update_census_lists(save_dir, download_dirname, fmt, start_year, hard_fail=hard_fail)
 
 
-def _update_census_lists(save_dir, download_dirname, fmt, start_year, hard_fail):
+def _update_census_lists(save_dir: Path, download_dirname: Path, fmt: FileFormats, 
+                         start_year: int, hard_fail: bool):
     download_func = None; load_func = None
     if fmt == FileFormats.SHP:
         download_func = _download_shp_file
@@ -269,5 +270,4 @@ def _update_census_lists(save_dir, download_dirname, fmt, start_year, hard_fail)
         county_list.save(save_dir / f"{save_filename}.parquet")
 
     return
-
 

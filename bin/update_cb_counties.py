@@ -15,7 +15,7 @@ if __name__ == "__main__":
     parser.add_argument("-sd", "--save-dir", type=Path, default=basepath, 
                         help="Directory in which to save the county lists. "
                         f"Defaults to {basepath}.")
-    parser.add_argument("-dd", "--download-dirname", type=Optional[Path], default=None, 
+    parser.add_argument("-dd", "--download-dirname", type=Path, default=None, 
                         help="If provided, the original U.S. Census files will "
                         "be download here. If not provided, will create a temporary "
                         "directory in the working directory that should largely "
@@ -25,7 +25,7 @@ if __name__ == "__main__":
                         "county information. Valid values are " + 
                         ", ".join([f"{fmt.value!r}" for fmt in FileFormats]) + 
                         f". Default value: {FileFormats.SHP.value!r}")
-    parser.add_argument("-sy", "--start-year", type=Optional[int], default=None, 
+    parser.add_argument("-sy", "--start-year", type=int, default=None, 
                         help="Year from which to start downloading lists of counties. "
                         "Defaults to the return value of get_start_year(fmt=fmt), i.e., "
                         f"{YEARS[0]} for FileFormats.SHP and 2013 for FileFormats.KML.")
