@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, astuple
 import logging
 from pathlib import Path
 from typing import Optional
 
 import fastparquet
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 from pykml import parser
 
@@ -108,6 +109,12 @@ class CountyList:
     def set_count(self):
         return len(self._set)
     
+    @property
+    def cb_vintage(self):
+        if self.description.startswith("U.S. Census Bureau"):
+            return int(self.description[-4:])
+        return None
+    
     def fill_in_columns(self):
         # Fill in sub-FIPS if have full FIPS
         if self._columns.fips and (not self._columns.state_fips):
@@ -173,17 +180,20 @@ class CountyList:
         return (len(self.left_minus_right(other, ignore_states=ignore_states)) + 
                 len(self.right_minus_left(other, ignore_states=ignore_states)))
 
-    def closest_vintage(self, ignore_states=[]):
+    def closest_vintage(self, ignore_states=[], min_vintage=2010):
         """
         Returns the "cb_*_us_county.parquet" CountyList that is the closest (per 
         num_diffs(ignore_states=ignore_states)) to this CountyList.
         """
-        current = None
-        for filepath in basepath.glob("cb_*_us_county.parquet"):
-            census_year = int(filepath.stem.split("_")[1])
-            other = CountyList.load(filepath)
+        current = current_count = None
+        for vintage in CountyList.CB_VINTAGES:
+            if vintage < min_vintage:
+                continue
+            other = CountyList.load_cb_vintage(vintage)
             count = self.num_diffs(other, ignore_states=ignore_states)
+            logger.info(f"There are {count} diffs with {other.cb_vintage}. {current_count=}")
             if (current is None) or (count < current_count):
+                logger.debug(f"Switching to {other.cb_vintage}")
                 current = other
                 current_count = count
         return current
@@ -247,7 +257,6 @@ class CountyList:
             raise
         
         return CountyList(df, new_columns, description=f"U.S. Census Bureau SHP for {census_year}")
-
     
     @classmethod
     def load_from_census_kml(cls, filepath):
@@ -300,12 +309,27 @@ class CountyList:
             
     @classmethod
     def fixup_fips_codes(cls, df, columns: CountyListColumns):
-        if columns.fips and pd.api.types.is_integer_dtype(df[columns.fips].dtype):
-            df[columns.fips] = df[columns.fips].apply(lambda x: f"{x:05d}").astype(str)
-        if columns.state_fips and pd.api.types.is_integer_dtype(df[columns.state_fips].dtype):
-            df[columns.state_fips] = df[columns.state_fips].apply(lambda x: f"{x:02d}").astype(str)
-        if columns.county_fips and pd.api.types.is_integer_dtype(df[columns.county_fips].dtype):
-            df[columns.county_fips] = df[columns.county_fips].apply(lambda x: f"{x:03d}").astype(str)
+        if columns.fips:
+            if pd.api.types.is_integer_dtype(df[columns.fips].dtype):
+                df[columns.fips] = df[columns.fips].apply(lambda x: f"{x:05d}").astype(str)
+            elif pd.api.types.is_float_dtype(df[columns.fips].dtype):
+                df[columns.fips] = df[columns.fips].apply(
+                    lambda x: f"{int(x):05d}" if not np.isnan(x) else ""
+                ).astype(str)
+        if columns.state_fips:
+            if pd.api.types.is_integer_dtype(df[columns.state_fips].dtype):
+                df[columns.state_fips] = df[columns.state_fips].apply(lambda x: f"{x:02d}").astype(str)
+            elif pd.api.types.is_float_dtype(df[columns.state_fips].dtype):
+                df[columns.state_fips] = df[columns.state_fips].apply(
+                    lambda x: f"{int(x):02d}" if not np.isnan(x) else ""
+                ).astype(str)
+        if columns.county_fips:
+            if pd.api.types.is_integer_dtype(df[columns.county_fips].dtype):
+                df[columns.county_fips] = df[columns.county_fips].apply(lambda x: f"{x:03d}").astype(str)
+            elif pd.api.types.is_float_dtype(df[columns.county_fips].dtype):
+                df[columns.county_fips] = df[columns.county_fips].apply(
+                    lambda x: f"{int(x):03d}" if not np.isnan(x) else ""
+                ).astype(str)
             
     @classmethod
     def standardize_column_names(cls, df, columns: CountyListColumns, keep_extraneous_columns=False):
@@ -365,8 +389,72 @@ class CountyList:
             assert columns.state_abbr == cls.STANDARDIZED_COLUMNS.state_abbr, (columns.state_abbr, cls.STANDARDIZED_COLUMNS.state_abbr)
         if columns.state_name:
             assert columns.state_name == cls.STANDARDIZED_COLUMNS.state_name, (columns.state_name, cls.STANDARDIZED_COLUMNS.state_name)
+
+    @classmethod
+    def lower(cls, df, columns: CountyListColumns):
+        result = df.copy()
+        for col in [columns.county_name, columns.state_abbr, columns.state_name]:
+            if col:
+                result.loc[:,col] = result[col].apply(lambda x: x.lower())
+        return result
             
             
 def replace_state_lookup(county_list: CountyList):
-    county_list.df[["state_fips", "state", "state_name"]].drop_duplicates().reset_index(drop=True).to_parquet("state_lookup.parquet", index=False)
+    return (
+        county_list.df[["state_fips", "state", "state_name"]]
+        .drop_duplicates()
+        .reset_index(drop=True)
+        .to_parquet("state_lookup.parquet", index=False)
+    )
 
+
+def fill_in_fips(
+        df, columns: CountyListColumns, 
+        target_vintage=CountyList.CB_VINTAGES[-1],
+        include_old_vintages=False
+    ):
+    result = df.copy()
+    logger.info(f"Filling in FIPS codes for\n{result}")
+    tmp, tmp_columns = CountyList.standardize_column_names(
+        df, columns, keep_extraneous_columns=False
+    )
+    tmp = CountyList.lower(tmp, tmp_columns).reset_index()
+    tmp.loc[:, "fips"] = None
+    merge_on = [
+        x 
+        for x in [getattr(tmp_columns, field.name) for field in fields(CountyListColumns)] 
+        if x is not None
+    ]
+    logger.info(f"Starting from standardized version\n{tmp}")
+
+    vintages = [target_vintage] 
+    if include_old_vintages:
+        for v in [1990, 2000]:
+            if v != target_vintage:
+                vintages.append(v)
+    vintages += [v for v in CountyList.CB_VINTAGES if (v != target_vintage) and (v > 2000)]
+
+    for yr in vintages:
+        cb_counties = CountyList.load_cb_vintage(yr)
+        cb_counties = CountyList.lower(cb_counties.df, columns=CountyList.STANDARDIZED_COLUMNS)
+        cb_counties = cb_counties[merge_on + ["fips"]]
+        cb_counties.rename(columns={"fips": "fips_cb"}, inplace=True)
+        tmp = tmp.merge(cb_counties, on=merge_on, how="left")
+        inds = tmp.fips.isna()
+        tmp.loc[inds, "fips"] = tmp.loc[inds, "fips_cb"]
+        logger.info(f"After joining vintage {yr} on {merge_on} have \n{tmp}")
+        del tmp["fips_cb"]
+
+    result = result.merge(tmp[["index", "fips"]], how="left", left_index=True, right_on="index")
+    result = result.drop_duplicates()
+    del result["index"]
+    logger.info(f"After filling in FIPS codes and dropping duplicates:\n{result}")
+    return result
+        
+
+def to_dataframe(iter_of_dataclass):
+    list_of_dataclass = list(iter_of_dataclass)
+    columns = [field.name for field in fields(list_of_dataclass[0])]
+    return pd.DataFrame(
+        [astuple(dc_obj) for dc_obj in list_of_dataclass], columns=columns
+    )
